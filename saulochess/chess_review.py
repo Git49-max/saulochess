@@ -1658,6 +1658,13 @@ def review_game(uci_moves, roast=False, verbose=False, engine=None): # <<< ADICI
         else:
             previous_review = review_list[-1]
             # Passa o motor para review_move
+        if roast:
+            # Passa o motor para roast_move (se esta função usar análise do Stockfish)
+            classification, review, uci_best_move, san_best_move = review_move(
+                board, move, previous_review, check_if_opening, engine=engine # <<< PASSA O MOTOR
+            )
+        else:
+            # Passa o motor para review_move
             classification, review, uci_best_move, san_best_move = review_move(
                 board, move, previous_review, check_if_opening, engine=engine # <<< PASSA O MOTOR
             )
