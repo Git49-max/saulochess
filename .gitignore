@@ -1,0 +1,18 @@
+# Arquivos gerados pelo Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Pastas e arquivos de empacotamento
+dist/
+build/
+*.egg-info/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Logs e Dados temporários (como seu CSV local que foi removido)
+*.log
+*.csv
