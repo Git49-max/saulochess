@@ -50,6 +50,7 @@ try:
             move,
             previous_review="Game Start",
             engine=engine # **REQUIRED: Pass the open engine object**
+            language='en' # NEW - Choose your language: 'en' or 'ptbr'
         )
 
         # 4. Result
@@ -126,6 +127,7 @@ def run_test():
                 time_limit=ANALYSIS_TIME_LIMIT,
                 depth_limit=ANALYSIS_DEPTH_LIMIT,
                 engine=engine # The 'engine' object is passed to the API
+                language='en' # NEW - Choose your language: 'en' or 'ptbr'
             )
 
             print("Function pgn_game_review completed.")
@@ -215,6 +217,7 @@ classification, review, best_move, san_best = chess_review.review_move(
     engine=engine,
     openings_df=my_openings_df, # <--- PASS THE DATAFRAME HERE
     check_if_opening=True       # <--- ACTIVATE THE CHECK HERE
+    language='en'
 )
 
 engine.quit()
@@ -236,7 +239,7 @@ This package uses base code licensed under the MIT License. The copyright notice
 
 Further developments are Copyright (c) 2025 Saulo/SauloChess and are also under the MIT License.
 
-The original code is from LinkAnJarad, available in [OpenChess-Insights](https://github.com/LinkAnJarad/OpenChess-Insights/tree/main). I made some alterations, such as improvements of the engine management and translated it to portuguese. The English version is coming soon with a new option of which language you want to see the review :)
+The original code is from LinkAnJarad, available in [OpenChess-Insights](https://github.com/LinkAnJarad/OpenChess-Insights/tree/main). I made some alterations, such as improvements of the engine management and translated it to portuguese.
 
 By the way, the API code is open-source. If you want to contribute, go to https://github.com/Git49-max/saulochess. Don't forget to see the OpenChess-Insights github too!
 

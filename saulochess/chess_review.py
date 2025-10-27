@@ -1304,316 +1304,614 @@ piece_dict = {
     'b': 'Bispo'
 }
 
-def review_move(board: chess.Board, move, previous_review: str, check_if_opening=False, engine=None, openings_df = None): # <<< Adicionado 'engine=None'
+def review_move(board: chess.Board, move, previous_review: str, check_if_opening=False, engine=None, openings_df = None, language = 'en'): # <<< Adicionado 'engine=None'
     
     # 🚨 Se 'get_best_move' não for uma função persistente, precisamos de uma.
     # Vamos usar 'get_best_move_persistent(board, engine)' no corpo.
-    if engine is None:
-        raise ValueError("O motor (engine) deve ser passado para review_move para performance rápida.")
+    if language == 'ptbr':
+        if engine is None:
+            raise ValueError("O motor (engine) deve ser passado para review_move para performance rápida.")
 
-    # Função interna para formatar listas (mantida)
-    def format_item_list(items):
-        if len(items) == 0:
-            return ""
+        # Função interna para formatar listas (mantida)
+        def format_item_list(items):
+            if len(items) == 0:
+                return ""
 
-        if len(items) == 1:
-            return items[0]
+            if len(items) == 1:
+                return items[0]
 
-        formatted_items = ", ".join(items[:-1]) + ", and " + items[-1]
-        return formatted_items
+            formatted_items = ", ".join(items[:-1]) + ", and " + items[-1]
+            return formatted_items
 
-    position_after_move = board.copy()
-    position_after_move.push(move)
-    
-    review = ''
-
-    # CHAVE DE MUDANÇA 1: Usa a versão persistente
-    best_move = get_best_move_persistent(board, engine) # <<< MUDANÇA AQUI!
-
-    if check_if_opening and (openings_df is not None):
-        opening = search_opening(openings_df, get_board_pgn(position_after_move))
-        if opening is not None:
-            review = f'Esse é um movimeno de teoria. A abertura jogada é conhecida como {opening}. '
-            return 'book', review, best_move, board.san(best_move)
-    
-    # OBS: Você precisará garantir que 'classify_move' também use a 'engine' persistente internamente
-    move_classication = classify_move(board, move, engine) # <<< Você provavelmente precisará passar 'engine' para 'classify_move'
-
-    if move_classication in ['excellent', 'good']:
-
-        if move == best_move:
-            move_classication = "best"
-            
+        position_after_move = board.copy()
+        position_after_move.push(move)
         
-        trade = False
+        review = ''
 
-        if is_possible_trade(board, move) and not move_is_discovered_check(board, move):
-            if board.is_capture(move):
-                review += 'Isso é uma troca. '
+        # CHAVE DE MUDANÇA 1: Usa a versão persistente
+        best_move = get_best_move_persistent(board, engine) # <<< MUDANÇA AQUI!
+
+        if check_if_opening and (openings_df is not None):
+            opening = search_opening(openings_df, get_board_pgn(position_after_move))
+            if opening is not None:
+                review = f'Esse é um movimeno de teoria. A abertura jogada é conhecida como {opening}. '
+                return 'book', review, best_move, board.san(best_move)
+        
+        # OBS: Você precisará garantir que 'classify_move' também use a 'engine' persistente internamente
+        move_classication = classify_move(board, move, engine) # <<< Você provavelmente precisará passar 'engine' para 'classify_move'
+
+        if move_classication in ['excellent', 'good']:
+
+            if move == best_move:
+                move_classication = "best"
+                
+            
+            trade = False
+
+            if is_possible_trade(board, move) and not move_is_discovered_check(board, move):
+                if board.is_capture(move):
+                    review += 'Isso é uma troca. '
+                else:
+                    review += 'Isso oferece uma troca. '
+                trade = True
+
+            defended_pieces = move_defends_hanging_piece(board, move, return_list_defended=True)
+            defended_squares = [chess.square_name(s) for s in defended_pieces]
+            defended_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in defended_pieces]
+
+            if 'Rei' in defended_pieces:
+                ki = defended_pieces.index('Rei')
+                del defended_pieces[ki]
+                del defended_squares[ki]
+
+            if (len(defended_pieces) > 0) and (trade == False):
+                
+                review += f'Isso defende {format_item_list(defended_pieces)} em {format_item_list(defended_squares)}. '
+
+            possible_forked_squares = move_creates_fork(board, move, return_forked_squares=True)
+            if len(possible_forked_squares) >= 2:
+                forked_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in possible_forked_squares]
+                review += f'Isso cria um garfo em {format_item_list(forked_pieces)}. '
             else:
-                review += 'Isso oferece uma troca. '
-            trade = True
+                possible_attakced_piece = move_attacks_piece(board, move, return_attacked_piece=True)
+                if possible_attakced_piece is not False:
+                    review += f'Isso ataca um(a) {piece_dict[str(possible_attakced_piece).lower()]}. '
 
-        defended_pieces = move_defends_hanging_piece(board, move, return_list_defended=True)
-        defended_squares = [chess.square_name(s) for s in defended_pieces]
-        defended_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in defended_pieces]
 
-        if 'Rei' in defended_pieces:
-            ki = defended_pieces.index('Rei')
-            del defended_pieces[ki]
-            del defended_squares[ki]
+            if move_blocks_check(board, move):
+                review += f'Isso bloqueia um xeque no rei com uma peça. '
 
-        if (len(defended_pieces) > 0) and (trade == False):
+            developing = is_developing_move(board, move)
+            if developing is not False:
+                review += f'Isso desenvolve um(a) {piece_dict[developing.lower()]}. '
             
-            review += f'Isso defende {format_item_list(defended_pieces)} em {format_item_list(defended_squares)}. '
+            if is_fianchetto(board, move):
+                review += 'Isso fianqueta o bispo ao colocá-lo numa diagonal poderosa. '
 
-        possible_forked_squares = move_creates_fork(board, move, return_forked_squares=True)
-        if len(possible_forked_squares) >= 2:
-            forked_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in possible_forked_squares]
-            review += f'Isso cria um garfo em {format_item_list(forked_pieces)}. '
-        else:
-            possible_attakced_piece = move_attacks_piece(board, move, return_attacked_piece=True)
-            if possible_attakced_piece is not False:
-                review += f'Isso ataca um(a) {piece_dict[str(possible_attakced_piece).lower()]}. '
+            if move_pins_opponent(board, move):
+                review += 'Isso prende uma peça do oponente ao seu rei. '
 
+            if moves_rook_to_open_file(board, move):
+                review += "Ao colocar a torre em uma coluna aberta, ela controla colunas importantes. "
 
-        if move_blocks_check(board, move):
-            review += f'Isso bloqueia um xeque no rei com uma peça. '
+            if is_endgame(board):
+                if move_moves_king_off_backrank(board, move):
+                    review += "Ao mover o rei para fora da última fileira, o risco de ameaças de mate na última fileira é reduzido e melhora a segurança do rei. "
 
-        developing = is_developing_move(board, move)
-        if developing is not False:
-            review += f'Isso desenvolve um(a) {piece_dict[developing.lower()]}. '
-        
-        if is_fianchetto(board, move):
-            review += 'Isso fianqueta o bispo ao colocá-lo numa diagonal poderosa. '
+            if move_wins_tempo(board, move, engine=engine):
+                review += 'Esse movimento ganha ritmo. '
 
-        if move_pins_opponent(board, move):
-            review += 'Isso prende uma peça do oponente ao seu rei. '
+            if 'trade' not in previous_review:
 
-        if moves_rook_to_open_file(board, move):
-            review += "Ao colocar a torre em uma coluna aberta, ela controla colunas importantes. "
+                if move_captures_higher_piece(board, move):
+                    review += f'Isso captura uma peça de maior valor que a sua. '
 
-        if is_endgame(board):
-            if move_moves_king_off_backrank(board, move):
-                review += "Ao mover o rei para fora da última fileira, o risco de ameaças de mate na última fileira é reduzido e melhora a segurança do rei. "
+                if 'higher value piece' not in previous_review:
+                    if move_captures_free_piece(board, move):
+                        review += f'Isso captura de graça um(a) {piece_dict[str(board.piece_at(move.to_square)).lower()]}. '
 
-        if move_wins_tempo(board, move, engine=engine):
-            review += 'Esse movimento ganha ritmo. '
+            attacked_squares_with_check = move_is_discovered_check_and_attacks(board, move, return_attacked_squares=True)
+            if len(attacked_squares_with_check) > 0:
+                attacked_pieces_with_check = [board.piece_at(s) for s in attacked_squares_with_check]
+                attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
+                review += f'Isso cria um xeque descoberto ao atacar um(a) {format_item_list(attacked_pieces_with_check)}. '
 
-        if 'trade' not in previous_review:
-
-            if move_captures_higher_piece(board, move):
-                review += f'Isso captura uma peça de maior valor que a sua. '
-
-            if 'higher value piece' not in previous_review:
-                if move_captures_free_piece(board, move):
-                    review += f'Isso captura de graça um(a) {piece_dict[str(board.piece_at(move.to_square)).lower()]}. '
-
-        attacked_squares_with_check = move_is_discovered_check_and_attacks(board, move, return_attacked_squares=True)
-        if len(attacked_squares_with_check) > 0:
-            attacked_pieces_with_check = [board.piece_at(s) for s in attacked_squares_with_check]
-            attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
-            review += f'Isso cria um xeque descoberto ao atacar um(a) {format_item_list(attacked_pieces_with_check)}. '
-
-        trapped_squares = move_traps_opponents_piece(board, move, return_trapped_squares=True)
-        if len(trapped_squares) > 0:
-            trapped_pieces = [board.piece_at(s) for s in trapped_squares]
-            trapped_pieces = [piece_dict[str(p).lower()] for p in trapped_pieces]
-            review += f'Isso prende um(a) {format_item_list(trapped_pieces)}. '
-
-        if is_possible_sacrifice(board, move):
-            #if move_classication != 'good':
-            move_classication = 'brilliant'
-            review = review.replace('best', 'brilliant')
-            review = review.replace('good', 'brilliant')
-            review = review.replace('excellent', 'brilliant')
-            review += f'Isso sacrifica o(a) {piece_dict[str(board.piece_at(move.from_square)).lower()]}. '
-
-        if move_threatens_mate(board, move, engine=engine):
-            review += 'Isso cria uma ameaça de xeque-mate. '
-
-
-    elif move_classication in ['inaccuracy', 'mistake', 'blunder']:
-
-
-        possible_hanging_squares = []
-        if ('creates a fork' not in previous_review) or (not board.is_check()) or ('trade' not in previous_review) or ('lower value' not in previous_review):
-            possible_hanging_squares = move_hangs_piece(board, move, return_hanging_squares=True)
-
-            if is_possible_trade(board, move):
-                if move.to_square in possible_hanging_squares:
-                    del possible_hanging_squares[possible_hanging_squares.index(move.to_square)]
-
-            possible_hanging_squares = [s for s in possible_hanging_squares if position_after_move.piece_at(s).color == board.turn]
-            if len(possible_hanging_squares) > 0:
-                hanging_squares = [chess.square_name(s) for s in possible_hanging_squares]
-                hanging_pieces = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in possible_hanging_squares]
-                review += f'Esse movimento deixa {format_item_list(hanging_pieces)} pendurado em {format_item_list(hanging_squares)}. '
-
-        capturable_pieces_by_lower = check_for_capturable_pieces_by_lower(position_after_move)
-        capturable_pieces_by_lower = [s for s in capturable_pieces_by_lower if s not in possible_hanging_squares]
-
-        if (len(capturable_pieces_by_lower) > 0) and (not position_after_move.is_check())  and (not is_possible_trade(board, move)):
-            capturable_pieces_by_lower = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in capturable_pieces_by_lower]
-            review += f'Um(a) {format_item_list(capturable_pieces_by_lower)} pode ser capturado por uma peça de menor valor. '
-
-        possible_forking_moves = move_allows_fork(board, move, return_forking_moves=True)
-        
-        if get_best_move_persistent(position_after_move, engine) in possible_forking_moves: # <<< MUDANÇA AQUI!
-            review += 'Esse movimento deixa peças vulneráveis a um garfo. '
-
-        missed_forks = move_misses_fork(board, move, return_forking_moves=True)
-        if (best_move in missed_forks) and (move != best_move):
-            review += f'Esse foi um garfo perdido com {board.san(best_move)}. '
-
-        missed_pins = move_misses_pin(board, move, return_pin_move=True)
-        if (best_move in missed_pins) and (move != best_move):
-            review += f"Houve um pino perdido no movimento anterior com {board.san(best_move)}. "
-
-        missed_free_captures = move_misses_free_piece(board, move, return_free_captures=True)
-        if len(missed_free_captures) > 0:
-            if (best_move in missed_free_captures) and (move != best_move):
-                review += f"Uma oportunidade de capturar um(a) {piece_dict[str(board.piece_at(best_move.to_square)).lower()]} foi perdida. "
-        
-        # CHAVE DE MUDANÇA 2: Usa a versão persistente para o lance do oponente
-        lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< MUDANÇA AQUI!
-
-        if move_threatens_mate(board, best_move, engine=engine):
-            review += 'Isso perde uma oportunidade de criar uma ameaça de xeque-mate. '
-
-        missed_attacked_piece = move_attacks_piece(board, best_move, return_attacked_piece=True)
-        if missed_attacked_piece is not False:
-            review += f'Uma chance de atacar um(a) {piece_dict[str(missed_attacked_piece).lower()]} com {board.san(best_move)} foi perdida. '
-
-        if move_attacks_piece(position_after_move, lets_opponent_play_move):
-            review += f'Isso permite o oponente atacar uma peça. '
-
-        attacked_squares_with_check = move_is_discovered_check_and_attacks(position_after_move, lets_opponent_play_move, return_attacked_squares=True)
-        if len(attacked_squares_with_check) > 0:
-            attacked_pieces_with_check = [position_after_move.piece_at(s) for s in attacked_squares_with_check]
-            attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
-            review += f'Isso deixa o oponente ganhar um(a) {format_item_list(attacked_pieces_with_check)} por um xeque desoberto. '
-
-        missed_attacked_squares_with_check = move_is_discovered_check_and_attacks(board, best_move, return_attacked_squares=True)
-        if len(missed_attacked_squares_with_check) > 0:
-            missed_attacked_pieces_with_check = [board.piece_at(s) for s in missed_attacked_squares_with_check]
-            missed_attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in missed_attacked_pieces_with_check]
-            review += f'Isso perde a chance de atacar um(a) {format_item_list(missed_attacked_pieces_with_check)} por um xeque descoberto. '
-
-        if not (len(attacked_squares_with_check) > 0):
-            trapped_squares = move_traps_opponents_piece(position_after_move, lets_opponent_play_move, return_trapped_squares=True)
+            trapped_squares = move_traps_opponents_piece(board, move, return_trapped_squares=True)
             if len(trapped_squares) > 0:
-                trapped_pieces = [position_after_move.piece_at(s) for s in trapped_squares]
+                trapped_pieces = [board.piece_at(s) for s in trapped_squares]
                 trapped_pieces = [piece_dict[str(p).lower()] for p in trapped_pieces]
-                review += f'Isso permite um(a) {format_item_list(trapped_pieces)} ser presa. '
+                review += f'Isso prende um(a) {format_item_list(trapped_pieces)}. '
 
-        missed_trapped_squares = move_traps_opponents_piece(board, best_move, return_trapped_squares=True)
-        if len(missed_trapped_squares) > 0:
-            missed_trapped_pieces = [board.piece_at(s) for s in missed_trapped_squares]
-            missed_trapped_pieces = [piece_dict[str(p).lower()] for p in missed_trapped_pieces]
-            review += f'Isso perde a chance de prender um(a) {format_item_list(missed_trapped_pieces)}. '
+            if is_possible_sacrifice(board, move):
+                #if move_classication != 'good':
+                move_classication = 'brilliant'
+                review = review.replace('best', 'brilliant')
+                review = review.replace('good', 'brilliant')
+                review = review.replace('excellent', 'brilliant')
+                review += f'Isso sacrifica o(a) {piece_dict[str(board.piece_at(move.from_square)).lower()]}. '
 
-        if move_wins_tempo(position_after_move, lets_opponent_play_move, engine=engine):
-            review += f'O oponente pode ganhar ritmo. '
+            if move_threatens_mate(board, move, engine=engine):
+                review += 'Isso cria uma ameaça de xeque-mate. '
 
-        review += f"O oponente pode jogar {position_after_move.san(lets_opponent_play_move)}. "
 
-    elif 'continues gets mated' in move_classication:
-        losing_side = 'brancas' if board.turn else 'pretas'
-        review += f"{board.san(move)} é bom, mas as {losing_side} ainda levarão xeque-mate. As {losing_side} levam xeque-mate em {move_classication[-1]}. "
-        if move == best_move:
-            move_classication = "best"
-        else:
-            move_classication = 'good'
-        return move_classication, review, best_move, board.san(best_move)
+        elif move_classication in ['inaccuracy', 'mistake', 'blunder']:
 
-    elif 'gets mated' in move_classication:
-        lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< MUDANÇA AQUI!
 
-        losing_side = 'brancas' if board.turn else 'pretas'
-        review += f'O oponente pode jogar {position_after_move.san(lets_opponent_play_move)}. '
-        review += f"{board.san(move)} é uma péssima jogada e permite o oponente dar xeque-mate. As {losing_side} levam xeque-mate em {move_classication[-1]}. "
+            possible_hanging_squares = []
+            if ('creates a fork' not in previous_review) or (not board.is_check()) or ('trade' not in previous_review) or ('lower value' not in previous_review):
+                possible_hanging_squares = move_hangs_piece(board, move, return_hanging_squares=True)
 
-        move_classication = 'blunder'
-        return move_classication, review, best_move, board.san(best_move)
-    
-    elif 'lost mate' in move_classication:
-        lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< MUDANÇA AQUI!
-        review += f"Isso perde uma sequência de xeque-mate. O oponente pode jogar {position_after_move.san(lets_opponent_play_move)}. "
-        move_classication = 'blunder'
-        return move_classication, review, best_move, board.san(best_move)
-    elif 'mates' in move_classication:
-        if is_possible_sacrifice(board, move):
-            # Se for um Mate Forçado E um Sacrifício, promova para 'brilliant'
-            move_classication = 'brilliant'
-            review = review.replace('best', 'brilliant')
-            review = review.replace('good', 'brilliant')
-            review = review.replace('excellent', 'brilliant')
+                if is_possible_trade(board, move):
+                    if move.to_square in possible_hanging_squares:
+                        del possible_hanging_squares[possible_hanging_squares.index(move.to_square)]
+
+                possible_hanging_squares = [s for s in possible_hanging_squares if position_after_move.piece_at(s).color == board.turn]
+                if len(possible_hanging_squares) > 0:
+                    hanging_squares = [chess.square_name(s) for s in possible_hanging_squares]
+                    hanging_pieces = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in possible_hanging_squares]
+                    review += f'Esse movimento deixa {format_item_list(hanging_pieces)} pendurado em {format_item_list(hanging_squares)}. '
+
+            capturable_pieces_by_lower = check_for_capturable_pieces_by_lower(position_after_move)
+            capturable_pieces_by_lower = [s for s in capturable_pieces_by_lower if s not in possible_hanging_squares]
+
+            if (len(capturable_pieces_by_lower) > 0) and (not position_after_move.is_check())  and (not is_possible_trade(board, move)):
+                capturable_pieces_by_lower = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in capturable_pieces_by_lower]
+                review += f'Um(a) {format_item_list(capturable_pieces_by_lower)} pode ser capturado por uma peça de menor valor. '
+
+            possible_forking_moves = move_allows_fork(board, move, return_forking_moves=True)
             
-            # O número de lances para o mate está na última parte da string move_classication (ex: '4' de 'White mates in 4')
-            n_current_mate = move_classication.split()[-1].replace('.', '')
+            if get_best_move_persistent(position_after_move, engine) in possible_forking_moves: # <<< MUDANÇA AQUI!
+                review += 'Esse movimento deixa peças vulneráveis a um garfo. '
+
+            missed_forks = move_misses_fork(board, move, return_forking_moves=True)
+            if (best_move in missed_forks) and (move != best_move):
+                review += f'Esse foi um garfo perdido com {board.san(best_move)}. '
+
+            missed_pins = move_misses_pin(board, move, return_pin_move=True)
+            if (best_move in missed_pins) and (move != best_move):
+                review += f"Houve um pino perdido no movimento anterior com {board.san(best_move)}. "
+
+            missed_free_captures = move_misses_free_piece(board, move, return_free_captures=True)
+            if len(missed_free_captures) > 0:
+                if (best_move in missed_free_captures) and (move != best_move):
+                    review += f"Uma oportunidade de capturar um(a) {piece_dict[str(board.piece_at(best_move.to_square)).lower()]} foi perdida. "
             
-            # Adicione a descrição do Brilhante (Mate de Legal)
-            review += f'Isso é uma JOGADA BRILHANTE! Você sacrifica o(a) {piece_dict[str(board.piece_at(move.from_square)).lower()]}, garantindo o xeque-mate em {n_current_mate} lances. '
-            
-            # Retorne o resultado imediatamente, se for brilhante
+            # CHAVE DE MUDANÇA 2: Usa a versão persistente para o lance do oponente
+            lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< MUDANÇA AQUI!
+
+            if move_threatens_mate(board, best_move, engine=engine):
+                review += 'Isso perde uma oportunidade de criar uma ameaça de xeque-mate. '
+
+            missed_attacked_piece = move_attacks_piece(board, best_move, return_attacked_piece=True)
+            if missed_attacked_piece is not False:
+                review += f'Uma chance de atacar um(a) {piece_dict[str(missed_attacked_piece).lower()]} com {board.san(best_move)} foi perdida. '
+
+            if move_attacks_piece(position_after_move, lets_opponent_play_move):
+                review += f'Isso permite o oponente atacar uma peça. '
+
+            attacked_squares_with_check = move_is_discovered_check_and_attacks(position_after_move, lets_opponent_play_move, return_attacked_squares=True)
+            if len(attacked_squares_with_check) > 0:
+                attacked_pieces_with_check = [position_after_move.piece_at(s) for s in attacked_squares_with_check]
+                attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
+                review += f'Isso deixa o oponente ganhar um(a) {format_item_list(attacked_pieces_with_check)} por um xeque desoberto. '
+
+            missed_attacked_squares_with_check = move_is_discovered_check_and_attacks(board, best_move, return_attacked_squares=True)
+            if len(missed_attacked_squares_with_check) > 0:
+                missed_attacked_pieces_with_check = [board.piece_at(s) for s in missed_attacked_squares_with_check]
+                missed_attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in missed_attacked_pieces_with_check]
+                review += f'Isso perde a chance de atacar um(a) {format_item_list(missed_attacked_pieces_with_check)} por um xeque descoberto. '
+
+            if not (len(attacked_squares_with_check) > 0):
+                trapped_squares = move_traps_opponents_piece(position_after_move, lets_opponent_play_move, return_trapped_squares=True)
+                if len(trapped_squares) > 0:
+                    trapped_pieces = [position_after_move.piece_at(s) for s in trapped_squares]
+                    trapped_pieces = [piece_dict[str(p).lower()] for p in trapped_pieces]
+                    review += f'Isso permite um(a) {format_item_list(trapped_pieces)} ser presa. '
+
+            missed_trapped_squares = move_traps_opponents_piece(board, best_move, return_trapped_squares=True)
+            if len(missed_trapped_squares) > 0:
+                missed_trapped_pieces = [board.piece_at(s) for s in missed_trapped_squares]
+                missed_trapped_pieces = [piece_dict[str(p).lower()] for p in missed_trapped_pieces]
+                review += f'Isso perde a chance de prender um(a) {format_item_list(missed_trapped_pieces)}. '
+
+            if move_wins_tempo(position_after_move, lets_opponent_play_move, engine=engine):
+                review += f'O oponente pode ganhar ritmo. '
+
+            review += f"O oponente pode jogar {position_after_move.san(lets_opponent_play_move)}. "
+
+        elif 'continues gets mated' in move_classication:
+            losing_side = 'brancas' if board.turn else 'pretas'
+            review += f"{board.san(move)} é bom, mas as {losing_side} ainda levarão xeque-mate. As {losing_side} levam xeque-mate em {move_classication[-1]}. "
+            if move == best_move:
+                move_classication = "best"
+            else:
+                move_classication = 'good'
             return move_classication, review, best_move, board.san(best_move)
 
-        # 1. Tenta extrair o número de lances para o mate anterior de forma mais segura
-        n_prev_mate = None
-        try:
-             # O número de lances está na penúltima palavra (ex: 'em 6.' -> '6')
-             if previous_review.split() and previous_review.split()[-2].isdigit():
-                 n_prev_mate = int(previous_review.split()[-2])
-        except:
-             # Ignora se falhar, assume que não estava em sequência de mate
-             pass
+        elif 'gets mated' in move_classication:
+            lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< MUDANÇA AQUI!
 
-        # 2. Tenta extrair o número de lances para o mate atual
-        n_current_mate = int(move_classication.split()[-1].replace('.', '')) # Ex: 'White mates in 4' -> 4
-        if n_current_mate == 0:
-            review += "Xeque-mate!"
-            move_classication = 'best'
+            losing_side = 'brancas' if board.turn else 'pretas'
+            review += f'O oponente pode jogar {position_after_move.san(lets_opponent_play_move)}. '
+            review += f"{board.san(move)} é uma péssima jogada e permite o oponente dar xeque-mate. As {losing_side} levam xeque-mate em {move_classication[-1]}. "
+
+            move_classication = 'blunder'
             return move_classication, review, best_move, board.san(best_move)
-        elif n_prev_mate is not None: # Está CONTINUANDO uma sequência de mate
-            
-            if n_current_mate < n_prev_mate: # O mate está mais perto ou manteve a distância ideal
-                winning_side = 'brancas' if board.turn else 'pretas'
-                if n_current_mate == 0:
-                    review += f"Xeque-mate!"
-                else:
-                    review += f"{board.san(move)} continua a sequência de xeque-mate. As {winning_side} levam xeque-mate em {n_current_mate}. "
+        
+        elif 'lost mate' in move_classication:
+            lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< MUDANÇA AQUI!
+            review += f"Isso perde uma sequência de xeque-mate. O oponente pode jogar {position_after_move.san(lets_opponent_play_move)}. "
+            move_classication = 'blunder'
+            return move_classication, review, best_move, board.san(best_move)
+        elif 'mates' in move_classication:
+            if is_possible_sacrifice(board, move):
+                # Se for um Mate Forçado E um Sacrifício, promova para 'brilliant'
+                move_classication = 'brilliant'
+                review = review.replace('best', 'brilliant')
+                review = review.replace('good', 'brilliant')
+                review = review.replace('excellent', 'brilliant')
                 
-                if move == best_move:
-                    move_classication = "best"
-                else:
-                    move_classication = 'excellent' # Sequência correta, mas não o lance principal
-            
-            else: # O mate ficou mais longo ou manteve o mate em X lances, mas perdeu o lance principal
-                winning_side = 'brancas' if board.turn else 'pretas'
-                review += f"{board.san(move)} é bom, mas tinha um jeito mais rápido de dar xeque-mate. As {winning_side} levam xeque-mate em {n_current_mate}. "
+                # O número de lances para o mate está na última parte da string move_classication (ex: '4' de 'White mates in 4')
+                n_current_mate = move_classication.split()[-1].replace('.', '')
                 
+                # Adicione a descrição do Brilhante (Mate de Legal)
+                review += f'Isso é uma JOGADA BRILHANTE! Você sacrifica o(a) {piece_dict[str(board.piece_at(move.from_square)).lower()]}, garantindo o xeque-mate em {n_current_mate} lances. '
+                
+                # Retorne o resultado imediatamente, se for brilhante
+                return move_classication, review, best_move, board.san(best_move)
+
+            # 1. Tenta extrair o número de lances para o mate anterior de forma mais segura
+            n_prev_mate = None
+            try:
+                # O número de lances está na penúltima palavra (ex: 'em 6.' -> '6')
+                if previous_review.split() and previous_review.split()[-2].isdigit():
+                    n_prev_mate = int(previous_review.split()[-2])
+            except:
+                # Ignora se falhar, assume que não estava em sequência de mate
+                pass
+
+            # 2. Tenta extrair o número de lances para o mate atual
+            n_current_mate = int(move_classication.split()[-1].replace('.', '')) # Ex: 'White mates in 4' -> 4
+            if n_current_mate == 0:
+                review += "Xeque-mate!"
+                move_classication = 'best'
+                return move_classication, review, best_move, board.san(best_move)
+            elif n_prev_mate is not None: # Está CONTINUANDO uma sequência de mate
+                
+                if n_current_mate < n_prev_mate: # O mate está mais perto ou manteve a distância ideal
+                    winning_side = 'brancas' if board.turn else 'pretas'
+                    if n_current_mate == 0:
+                        review += f"Xeque-mate!"
+                    else:
+                        review += f"{board.san(move)} continua a sequência de xeque-mate. As {winning_side} levam xeque-mate em {n_current_mate}. "
+                    
+                    if move == best_move:
+                        move_classication = "best"
+                    else:
+                        move_classication = 'excellent' # Sequência correta, mas não o lance principal
+                
+                else: # O mate ficou mais longo ou manteve o mate em X lances, mas perdeu o lance principal
+                    winning_side = 'brancas' if board.turn else 'pretas'
+                    review += f"{board.san(move)} é bom, mas tinha um jeito mais rápido de dar xeque-mate. As {winning_side} levam xeque-mate em {n_current_mate}. "
+                    
+                    if move == best_move:
+                        move_classication = "best"
+                    else:
+                        move_classication = 'good' # Classifica como bom, mas não o melhor
+                
+                # 🚨 Retorne explicitamente após a lógica de continuação
+                return move_classication, review, best_move, board.san(best_move)
+            elif n_current_mate == 0:
+                review += f'Xeque-mate!'
+                move_classication = 'best'
+            else: # É o INÍCIO da sequência de mate (anterior NÃO era mate)
+                review += f'Esse movimento garante o xeque-mate em {n_current_mate} lances. '
                 if move == best_move:
-                    move_classication = "best"
-                else:
-                    move_classication = 'good' # Classifica como bom, mas não o melhor
-            
-            # 🚨 Retorne explicitamente após a lógica de continuação
+                    move_classication = 'best' # O lance de mate é sempre o melhor lance!
+                else: move_classication = 'good'
             return move_classication, review, best_move, board.san(best_move)
-        elif n_current_mate == 0:
-            review += f'Xeque-mate!'
-            move_classication = 'best'
-        else: # É o INÍCIO da sequência de mate (anterior NÃO era mate)
-             review += f'Esse movimento garante o xeque-mate em {n_current_mate} lances. '
-             if move == best_move:
-                move_classication = 'best' # O lance de mate é sempre o melhor lance!
-             else: move_classication = 'good'
+                
         return move_classication, review, best_move, board.san(best_move)
+    elif language == 'en':
+        def format_item_list(items):
+            if len(items) == 0:
+                return ""
+
+            if len(items) == 1:
+                return items[0]
+
+            formatted_items = ", ".join(items[:-1]) + ", and " + items[-1]
+            return formatted_items
+
+        position_after_move = board.copy()
+        position_after_move.push(move)
+        
+        review = ''
+
+        # CHANGE KEY 1: Uses the persistent version
+        best_move = get_best_move_persistent(board, engine) # <<< CHANGE HERE!
+
+        if check_if_opening and (openings_df is not None):
+            opening = search_opening(openings_df, get_board_pgn(position_after_move))
+            if opening is not None:
+                review = f'This is a theory move. The opening played is known as {opening}. '
+                return 'book', review, best_move, board.san(best_move)
+        
+        # NOTE: You will need to ensure that 'classify_move' also uses the persistent 'engine' internally
+        move_classication = classify_move(board, move, engine) # <<< You will probably need to pass 'engine' to 'classify_move'
+
+        if move_classication in ['excellent', 'good']:
+
+            if move == best_move:
+                move_classication = "best"
+                
             
-    return move_classication, review, best_move, board.san(best_move)
+            trade = False
+
+            if is_possible_trade(board, move) and not move_is_discovered_check(board, move):
+                if board.is_capture(move):
+                    review += 'This is a trade. '
+                else:
+                    review += 'This offers a trade. '
+                trade = True
+
+            defended_pieces = move_defends_hanging_piece(board, move, return_list_defended=True)
+            defended_squares = [chess.square_name(s) for s in defended_pieces]
+            defended_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in defended_pieces]
+
+            if 'Rei' in defended_pieces:
+                ki = defended_pieces.index('Rei')
+                del defended_pieces[ki]
+                del defended_squares[ki]
+
+            if (len(defended_pieces) > 0) and (trade == False):
+                
+                review += f'This defends {format_item_list(defended_pieces)} on {format_item_list(defended_squares)}. '
+
+            possible_forked_squares = move_creates_fork(board, move, return_forked_squares=True)
+            if len(possible_forked_squares) >= 2:
+                forked_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in possible_forked_squares]
+                review += f'This creates a fork on {format_item_list(forked_pieces)}. '
+            else:
+                possible_attakced_piece = move_attacks_piece(board, move, return_attacked_piece=True)
+                if possible_attakced_piece is not False:
+                    review += f'This attacks a {piece_dict[str(possible_attakced_piece).lower()]}. '
 
 
+            if move_blocks_check(board, move):
+                review += f'This blocks a check on the king with a piece. '
 
+            developing = is_developing_move(board, move)
+            if developing is not False:
+                review += f'This develops a {piece_dict[developing.lower()]}. '
+            
+            if is_fianchetto(board, move):
+                review += 'This fianchettos the bishop by placing it on a powerful diagonal. '
+
+            if move_pins_opponent(board, move):
+                review += 'This pins an opponent\'s piece to their king. '
+
+            if moves_rook_to_open_file(board, move):
+                review += "By placing the rook on an open file, it controls important files. "
+
+            if is_endgame(board):
+                if move_moves_king_off_backrank(board, move):
+                    review += "By moving the king off the back rank, the risk of back-rank mate threats is reduced and improves king safety. "
+
+            if move_wins_tempo(board, move, engine=engine):
+                review += 'This move gains tempo. '
+
+            if 'trade' not in previous_review:
+
+                if move_captures_higher_piece(board, move):
+                    review += f'This captures a piece of higher value than yours. '
+
+                if 'higher value piece' not in previous_review:
+                    if move_captures_free_piece(board, move):
+                        review += f'This captures a free {piece_dict[str(board.piece_at(move.to_square)).lower()]}. '
+
+            attacked_squares_with_check = move_is_discovered_check_and_attacks(board, move, return_attacked_squares=True)
+            if len(attacked_squares_with_check) > 0:
+                attacked_pieces_with_check = [board.piece_at(s) for s in attacked_squares_with_check]
+                attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
+                review += f'This creates a discovered check while attacking a {format_item_list(attacked_pieces_with_check)}. '
+
+            trapped_squares = move_traps_opponents_piece(board, move, return_trapped_squares=True)
+            if len(trapped_squares) > 0:
+                trapped_pieces = [board.piece_at(s) for s in trapped_squares]
+                trapped_pieces = [piece_dict[str(p).lower()] for p in trapped_pieces]
+                review += f'This traps a {format_item_list(trapped_pieces)}. '
+
+            if is_possible_sacrifice(board, move):
+                #if move_classication != 'good':
+                move_classication = 'brilliant'
+                review = review.replace('best', 'brilliant')
+                review = review.replace('good', 'brilliant')
+                review = review.replace('excellent', 'brilliant')
+                review += f'This sacrifices the {piece_dict[str(board.piece_at(move.from_square)).lower()]}. '
+
+            if move_threatens_mate(board, move, engine=engine):
+                review += 'This creates a checkmate threat. '
+
+
+        elif move_classication in ['inaccuracy', 'mistake', 'blunder']:
+
+
+            possible_hanging_squares = []
+            if ('creates a fork' not in previous_review) or (not board.is_check()) or ('trade' not in previous_review) or ('lower value' not in previous_review):
+                possible_hanging_squares = move_hangs_piece(board, move, return_hanging_squares=True)
+
+                if is_possible_trade(board, move):
+                    if move.to_square in possible_hanging_squares:
+                        del possible_hanging_squares[possible_hanging_squares.index(move.to_square)]
+
+                possible_hanging_squares = [s for s in possible_hanging_squares if position_after_move.piece_at(s).color == board.turn]
+                if len(possible_hanging_squares) > 0:
+                    hanging_squares = [chess.square_name(s) for s in possible_hanging_squares]
+                    hanging_pieces = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in possible_hanging_squares]
+                    review += f'This move leaves {format_item_list(hanging_pieces)} hanging on {format_item_list(hanging_squares)}. '
+
+            capturable_pieces_by_lower = check_for_capturable_pieces_by_lower(position_after_move)
+            capturable_pieces_by_lower = [s for s in capturable_pieces_by_lower if s not in possible_hanging_squares]
+
+            if (len(capturable_pieces_by_lower) > 0) and (not position_after_move.is_check())  and (not is_possible_trade(board, move)):
+                capturable_pieces_by_lower = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in capturable_pieces_by_lower]
+                review += f'A {format_item_list(capturable_pieces_by_lower)} can be captured by a lower value piece. '
+
+            possible_forking_moves = move_allows_fork(board, move, return_forking_moves=True)
+            
+            if get_best_move_persistent(position_after_move, engine) in possible_forking_moves: # <<< CHANGE HERE!
+                review += 'This move leaves pieces vulnerable to a fork. '
+
+            missed_forks = move_misses_fork(board, move, return_forking_moves=True)
+            if (best_move in missed_forks) and (move != best_move):
+                review += f'This was a missed fork with {board.san(best_move)}. '
+
+            missed_pins = move_misses_pin(board, move, return_pin_move=True)
+            if (best_move in missed_pins) and (move != best_move):
+                review += f"There was a missed pin in the previous move with {board.san(best_move)}. "
+
+            missed_free_captures = move_misses_free_piece(board, move, return_free_captures=True)
+            if len(missed_free_captures) > 0:
+                if (best_move in missed_free_captures) and (move != best_move):
+                    review += f"A chance to capture a {piece_dict[str(board.piece_at(best_move.to_square)).lower()]} was missed. "
+            
+            # CHANGE KEY 2: Uses the persistent version for the opponent's move
+            lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< CHANGE HERE!
+
+            if move_threatens_mate(board, best_move, engine=engine):
+                review += 'This misses an opportunity to create a checkmate threat. '
+
+            missed_attacked_piece = move_attacks_piece(board, best_move, return_attacked_piece=True)
+            if missed_attacked_piece is not False:
+                review += f'A chance to attack a {piece_dict[str(missed_attacked_piece).lower()]} with {board.san(best_move)} was missed. '
+
+            if move_attacks_piece(position_after_move, lets_opponent_play_move):
+                review += f'This allows the opponent to attack a piece. '
+
+            attacked_squares_with_check = move_is_discovered_check_and_attacks(position_after_move, lets_opponent_play_move, return_attacked_squares=True)
+            if len(attacked_squares_with_check) > 0:
+                attacked_pieces_with_check = [position_after_move.piece_at(s) for s in attacked_squares_with_check]
+                attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
+                review += f'This lets the opponent win a {format_item_list(attacked_pieces_with_check)} with a discovered check. '
+
+            missed_attacked_squares_with_check = move_is_discovered_check_and_attacks(board, best_move, return_attacked_squares=True)
+            if len(missed_attacked_squares_with_check) > 0:
+                missed_attacked_pieces_with_check = [board.piece_at(s) for s in missed_attacked_squares_with_check]
+                missed_attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in missed_attacked_pieces_with_check]
+                review += f'This misses the chance to attack a {format_item_list(missed_attacked_pieces_with_check)} with a discovered check. '
+
+            if not (len(attacked_squares_with_check) > 0):
+                trapped_squares = move_traps_opponents_piece(position_after_move, lets_opponent_play_move, return_trapped_squares=True)
+                if len(trapped_squares) > 0:
+                    trapped_pieces = [position_after_move.piece_at(s) for s in trapped_squares]
+                    trapped_pieces = [piece_dict[str(p).lower()] for p in trapped_pieces]
+                    review += f'This allows a {format_item_list(trapped_pieces)} to be trapped. '
+
+            missed_trapped_squares = move_traps_opponents_piece(board, best_move, return_trapped_squares=True)
+            if len(missed_trapped_squares) > 0:
+                missed_trapped_pieces = [board.piece_at(s) for s in missed_trapped_squares]
+                missed_trapped_pieces = [piece_dict[str(p).lower()] for p in missed_trapped_pieces]
+                review += f'This misses the chance to trap a {format_item_list(missed_trapped_pieces)}. '
+
+            if move_wins_tempo(position_after_move, lets_opponent_play_move, engine=engine):
+                review += f'The opponent can gain tempo. '
+
+            review += f"The opponent can play {position_after_move.san(lets_opponent_play_move)}. "
+
+        elif 'continues gets mated' in move_classication:
+            losing_side = 'white' if board.turn else 'black'
+            review += f"{board.san(move)} is good, but {losing_side} will still be checkmated. {losing_side} will be checkmated in {move_classication[-1]}. "
+            if move == best_move:
+                move_classication = "best"
+            else:
+                move_classication = 'good'
+            return move_classication, review, best_move, board.san(best_move)
+
+        elif 'gets mated' in move_classication:
+            lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< CHANGE HERE!
+
+            losing_side = 'white' if board.turn else 'black'
+            review += f'The opponent can play {position_after_move.san(lets_opponent_play_move)}. '
+            review += f"{board.san(move)} is a very bad move and allows the opponent to deliver checkmate. {losing_side} will be checkmated in {move_classication[-1]}. "
+
+            move_classication = 'blunder'
+            return move_classication, review, best_move, board.san(best_move)
+        
+        elif 'lost mate' in move_classication:
+            lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< CHANGE HERE!
+            review += f"This misses a checkmate sequence. The opponent can play {position_after_move.san(lets_opponent_play_move)}. "
+            move_classication = 'blunder'
+            return move_classication, review, best_move, board.san(best_move)
+        elif 'mates' in move_classication:
+            if is_possible_sacrifice(board, move):
+                # If it is a Forced Mate AND a Sacrifice, promote to 'brilliant'
+                move_classication = 'brilliant'
+                review = review.replace('best', 'brilliant')
+                review = review.replace('good', 'brilliant')
+                review = review.replace('excellent', 'brilliant')
+                
+                # The number of moves for mate is in the last part of the move_classication string (e.g., '4' from 'White mates in 4')
+                n_current_mate = move_classication.split()[-1].replace('.', '')
+                
+                # Add the Brilliant description (Legal's Mate)
+                review += f'This is a BRILLIANT MOVE! You sacrifice the {piece_dict[str(board.piece_at(move.from_square)).lower()]}, guaranteeing checkmate in {n_current_mate} moves. '
+                
+                # Return the result immediately, if it is brilliant
+                return move_classication, review, best_move, board.san(best_move)
+
+            # 1. Tries to extract the number of moves for the previous mate more safely
+            n_prev_mate = None
+            try:
+                # The number of moves is in the second to last word (e.g., 'em 6.' -> '6')
+                if previous_review.split() and previous_review.split()[-2].isdigit():
+                    n_prev_mate = int(previous_review.split()[-2])
+            except:
+                # Ignores if it fails, assumes it was not in a mate sequence
+                pass
+
+            # 2. Tries to extract the number of moves for the current mate
+            n_current_mate = int(move_classication.split()[-1].replace('.', '')) # Ex: 'White mates in 4' -> 4
+            if n_current_mate == 0:
+                review += "Checkmate!"
+                move_classication = 'best'
+                return move_classication, review, best_move, board.san(best_move)
+            elif n_prev_mate is not None: # Is CONTINUING a mate sequence
+                
+                if n_current_mate < n_prev_mate: # Mate is closer or maintained the ideal distance
+                    winning_side = 'brancas' if board.turn else 'pretas'
+                    if n_current_mate == 0:
+                        review += f"Checkmate!"
+                    else:
+                        review += f"{board.san(move)} continues the checkmate sequence. {winning_side} will be checkmated in {n_current_mate}. "
+                    
+                    if move == best_move:
+                        move_classication = "best"
+                    else:
+                        move_classication = 'excellent' # Correct sequence, but not the main move
+                
+                else: # Mate got longer or maintained mate in X moves, but missed the main move
+                    winning_side = 'brancas' if board.turn else 'pretas'
+                    review += f"{board.san(move)} is good, but there was a faster way to deliver checkmate. {winning_side} will be checkmated in {n_current_mate}. "
+                    
+                    if move == best_move:
+                        move_classication = "best"
+                    else:
+                        move_classication = 'good' # Classifies as good, but not the best
+                
+                # 🚨 Return explicitly after the continuation logic
+                return move_classication, review, best_move, board.san(best_move)
+            elif n_current_mate == 0:
+                review += f'Checkmate!'
+                move_classication = 'best'
+            else: # It's the START of the mate sequence (previous was NOT mate)
+                review += f'This move guarantees checkmate in {n_current_mate} moves. '
+                if move == best_move:
+                    move_classication = 'best' # The mate move is always the best move!
+                else: move_classication = 'good'
+            return move_classication, review, best_move, board.san(best_move)
+            
+        return move_classication, review, best_move, board.san(best_move)
 
 def get_board_pgn(board: chess.Board):
     game = chess.pgn.Game()
@@ -1629,7 +1927,7 @@ def get_board_pgn(board: chess.Board):
 
 # NO ARQUIVO: saulochess/chess_review.py
 
-def review_game(uci_moves, roast=False, verbose=False, engine=None): 
+def review_game(uci_moves, roast=False, verbose=False, engine=None, language=None): 
     # 🚨 Certifique-se de que a variável 'engine' está aqui
 
     if engine is None:
@@ -1664,11 +1962,11 @@ def review_game(uci_moves, roast=False, verbose=False, engine=None):
             if roast:
                 # Se roast for True, você pode ter uma função roast_move separada ou usar review_move
                 classification, review, uci_best_move, san_best_move = review_move(
-                    board, move, previous_review, check_if_opening, engine=engine
+                    board, move, previous_review, check_if_opening, engine=engine, language=language
                 )
             else:
                 classification, review, uci_best_move, san_best_move = review_move(
-                    board, move, previous_review, check_if_opening, engine=engine
+                    board, move, previous_review, check_if_opening, engine=engine, language=language
                 )
 
         except Exception as e:
@@ -1696,7 +1994,8 @@ def review_game(uci_moves, roast=False, verbose=False, engine=None):
                         best_move_obj, # <<< AGORA PASSA O OBJETO MOVE CORRETO
                         previous_review, 
                         check_if_opening, 
-                        engine=engine
+                        engine=engine,
+                        language=language
                     )
                 except Exception as e:
                     best_review = f'Falha ao obter melhor review: {e}'
@@ -1736,7 +2035,7 @@ def seperate_squares_in_move_list(uci_moves: list):
     return seperated_squares
 
 @lru_cache(maxsize=128)
-def pgn_game_review(pgn_data: str, roast: bool, limit_type: str, time_limit: float, depth_limit: int, engine=None):
+def pgn_game_review(pgn_data: str, roast: bool, limit_type: str, time_limit: float, depth_limit: int, engine=None, language='en'):
     # 🚨 CORREÇÃO: ADICIONADO 'engine=None' para aceitar o motor do seu teste.py
     global STOCKFISH_CONFIG
     global stockfish_path 
@@ -1775,7 +2074,8 @@ def pgn_game_review(pgn_data: str, roast: bool, limit_type: str, time_limit: flo
         review_list, best_review_list, classification_list, uci_best_moves, san_best_moves = review_game(
             uci_moves, 
             roast, 
-            engine=local_engine
+            engine=local_engine,
+            language=language
         )
 
     except Exception as e:
