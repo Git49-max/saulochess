@@ -1627,10 +1627,10 @@ def get_board_pgn(board: chess.Board):
 
     return str(game.mainline_moves())
 
-def review_game(uci_moves, roast=False, verbose=False, engine=None): # <<< ADICIONADO 'engine=None'
-    
-    # 🚨 NOTA: O argumento 'engine' é OBRIGATÓRIO, mas o default é None para flexibilidade.
-    # No entanto, a função que chama esta (pgn_game_review) é quem deve PASSAR o motor.
+# NO ARQUIVO: saulochess/chess_review.py
+
+def review_game(uci_moves, roast=False, verbose=False, engine=None): 
+    # 🚨 Certifique-se de que a variável 'engine' está aqui
 
     if engine is None:
         raise ValueError("O motor (engine) deve ser passado para review_game para performance rápida.")
@@ -1639,13 +1639,11 @@ def review_game(uci_moves, roast=False, verbose=False, engine=None): # <<< ADICI
 
     san_best_moves = []
     uci_best_moves = []
-
     classification_list = []
-
     review_list = []
     best_review_list = []
 
-    # O loop `tqdm` (barra de progresso) deve permanecer, pois é a lógica original.
+    # O loop tqdm é mantido
     for i, move in enumerate(tqdm(uci_moves)):
 
         if i < 11:
@@ -1657,31 +1655,55 @@ def review_game(uci_moves, roast=False, verbose=False, engine=None): # <<< ADICI
             previous_review = None
         else:
             previous_review = review_list[-1]
-            # Passa o motor para review_move
-        if roast:
-            # Passa o motor para roast_move (se esta função usar análise do Stockfish)
-            classification, review, uci_best_move, san_best_move = review_move(
-                board, move, previous_review, check_if_opening, engine=engine # <<< PASSA O MOTOR
-            )
-        else:
-            # Passa o motor para review_move
-            classification, review, uci_best_move, san_best_move = review_move(
-                board, move, previous_review, check_if_opening, engine=engine # <<< PASSA O MOTOR
-            )
+        
+        # -----------------------------------------------------
+        # 🚨 CORREÇÃO PRINCIPAL: TRATAMENTO DE ERROS NA REVIEW_MOVE
+        # -----------------------------------------------------
+        try:
+            # Tenta analisar o lance jogado
+            if roast:
+                # Se roast for True, você pode ter uma função roast_move separada ou usar review_move
+                classification, review, uci_best_move, san_best_move = review_move(
+                    board, move, previous_review, check_if_opening, engine=engine
+                )
+            else:
+                classification, review, uci_best_move, san_best_move = review_move(
+                    board, move, previous_review, check_if_opening, engine=engine
+                )
+
+        except Exception as e:
+            # Se review_move falhar (timeout, erro do Stockfish), define valores seguros
+            classification = 'ERROR'
+            review = f'Falha interna na análise do lance: {e}'
+            uci_best_move = ''
+            san_best_move = ''
+            print(f"\n[AVISO] Erro no lance {i+1} ({move}): {e}") # Apenas para debug
+
         
         # OBTENÇÃO DA MELHOR REVISÃO
+        best_review = ''
         if classification not in ['book', 'best']:
-            # A chamada para review_move para o best_review TAMBÉM PRECISA DO MOTOR
-            # Lembre-se que uci_best_move é o lance, board é a posição ANTES do lance ser jogado
-            _, best_review, _, _ = review_move(
-                board, 
-                uci_best_move, 
-                previous_review, 
-                check_if_opening, 
-                engine=engine # <<< PASSA O MOTOR
-            )
-        else:
-            best_review = ''
+            
+            # Se a análise do lance jogado FALHOU, não podemos obter a melhor review
+            if uci_best_move:
+                try:
+                    # 🚨 Corrigindo a conversão de string UCI para objeto move
+                    best_move_obj = board.parse_uci(uci_best_move)
+                    
+                    # A chamada para review_move para o best_review
+                    _, best_review, _, _ = review_move(
+                        board, 
+                        best_move_obj, # <<< AGORA PASSA O OBJETO MOVE CORRETO
+                        previous_review, 
+                        check_if_opening, 
+                        engine=engine
+                    )
+                except Exception as e:
+                    best_review = f'Falha ao obter melhor review: {e}'
+            else:
+                 best_review = 'Não foi possível analisar o lance ou o melhor lance.'
+
+
 
         classification_list.append(classification)
         review_list.append(review)
@@ -1714,9 +1736,10 @@ def seperate_squares_in_move_list(uci_moves: list):
     return seperated_squares
 
 @lru_cache(maxsize=128)
-def pgn_game_review(pgn_data: str, roast: bool, limit_type: str, time_limit: float, depth_limit: int):
+def pgn_game_review(pgn_data: str, roast: bool, limit_type: str, time_limit: float, depth_limit: int, engine=None):
+    # 🚨 CORREÇÃO: ADICIONADO 'engine=None' para aceitar o motor do seu teste.py
     global STOCKFISH_CONFIG
-    global stockfish_path # Certifique-se de que STOCKFISH_PATH está definido globalmente
+    global stockfish_path 
 
     # 1. ATUALIZA A CONFIGURAÇÃO
     if limit_type == "time":
@@ -1726,31 +1749,52 @@ def pgn_game_review(pgn_data: str, roast: bool, limit_type: str, time_limit: flo
 
     uci_moves, san_moves, fens = parse_pgn(pgn_data)
     
-    # 2. ABRE O MOTOR UMA ÚNICA VEZ
+    # Gerenciamento do Motor
+    local_engine = engine
+    should_close_engine = False
+
+    # 2. ABRE O MOTOR SE NÃO FOI PASSADO (fluxo do seu site)
+    if local_engine is None:
+        try:
+            local_engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
+            should_close_engine = True
+        except Exception as e:
+            # Se nem abrir o motor falhar, retorna valores seguros.
+            print(f"Erro Crítico ao abrir o Stockfish em {stockfish_path}: {e}")
+            raise e # Levanta o erro para que o teste.py possa capturá-lo
+
     try:
-        with chess.engine.SimpleEngine.popen_uci(stockfish_path) as engine:
-            
-            # 3. CHAMA COMPUTE_CPL PASSANDO O MOTOR ABERTO
-            scores, cpls_white, cpls_black, average_cpl_white, average_cpl_black = compute_cpl(
-                uci_moves, 
-                engine # <<< PASSA 'engine' AQUI!
-            )
-            
-            # 4. CHAMA review_game PASSANDO O MOTOR ABERTO
-            # 🚨 Você precisa modificar a assinatura de review_game para aceitar 'engine'
-            review_list, best_review_list, classification_list, uci_best_moves, san_best_moves = review_game(
-                uci_moves, 
-                roast, 
-                engine=engine # <<< PASSA 'engine' AQUI!
-            )
+        # 3. CHAMA COMPUTE_CPL PASSANDO O MOTOR ABERTO
+        scores, cpls_white, cpls_black, average_cpl_white, average_cpl_black = compute_cpl(
+            uci_moves, 
+            local_engine
+        )
+        
+        # 4. CHAMA review_game PASSANDO O MOTOR ABERTO
+        # Certifique-se de que a assinatura de review_game também aceita 'engine'
+        review_list, best_review_list, classification_list, uci_best_moves, san_best_moves = review_game(
+            uci_moves, 
+            roast, 
+            engine=local_engine
+        )
 
     except Exception as e:
-        # Lidar com erros de Stockfish ou outros
+        # Lidar com erros de Stockfish ou outros (Onde o erro de NoneType ocorria)
         print(f"Erro na análise do Stockfish: {e}")
-        # Retorne valores padrão ou lance o erro novamente, dependendo da sua necessidade
-        raise e 
+        
+        # 🚨 CORREÇÃO ESSENCIAL: Retorna valores vazios/seguros em caso de falha.
+        return (
+            san_moves, fens, [0]*len(san_moves), ['error']*len(san_moves), ['Análise Falhou'], ['Análise Falhou'],
+            ['?'], ['?'], [0]*len(fens), [0]*len(fens), [0]*len(fens), [0]*len(fens),
+            0.0, 0.0, 0, 0, 0.0, 0.0 # Accuracies, ELOs, CPLs zerados
+        )
 
-    # 5. O RESTANTE DO CÓDIGO PERMANECE O MESMO
+    finally:
+        # 5. FECHA O MOTOR APENAS SE ELE FOI ABERTO NESTA FUNÇÃO
+        if should_close_engine:
+            local_engine.quit()
+
+    # 6. O RESTANTE DO CÓDIGO PERMANECE O MESMO
     n_moves = len(scores)//2
     white_elo_est, black_elo_est = estimate_elo(average_cpl_white, n_moves), estimate_elo(average_cpl_black, n_moves)
     white_acc, black_acc = calculate_accuracy(scores)
@@ -1759,22 +1803,7 @@ def pgn_game_review(pgn_data: str, roast: bool, limit_type: str, time_limit: flo
     uci_best_moves = seperate_squares_in_move_list(uci_best_moves)
 
     return (
-                san_moves, 
-                fens, 
-                scores,
-                classification_list,
-                review_list,
-                best_review_list,
-                san_best_moves,
-                uci_best_moves,
-                devs,
-                tens,
-                mobs,
-                conts,
-                white_acc,
-                black_acc,
-                white_elo_est,
-                black_elo_est,
-                average_cpl_white,
-                average_cpl_black
+                san_moves, fens, scores, classification_list, review_list, best_review_list,
+                san_best_moves, uci_best_moves, devs, tens, mobs, conts,
+                white_acc, black_acc, white_elo_est, black_elo_est, average_cpl_white, average_cpl_black
             )

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='saulochess',
-    version='0.1.1',
+    version='0.1.6',
     
     # Encontra a pasta 'saulochess' e a trata como o pacote principal
     packages=find_packages(),
