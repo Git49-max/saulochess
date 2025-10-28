@@ -1303,6 +1303,14 @@ piece_dict = {
     'p': 'Peão',
     'b': 'Bispo'
 }
+piece_dict_en = {
+    'k': 'King',
+    'n': 'Knight',
+    'q': 'Queen',
+    'r': 'Rook',
+    'p': 'Pawn',
+    'b': 'Bishop'
+}
 
 def review_move(board: chess.Board, move, previous_review: str, check_if_opening=False, engine=None, openings_df = None, language = 'en'): # <<< Adicionado 'engine=None'
     
@@ -1657,7 +1665,7 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
 
             defended_pieces = move_defends_hanging_piece(board, move, return_list_defended=True)
             defended_squares = [chess.square_name(s) for s in defended_pieces]
-            defended_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in defended_pieces]
+            defended_pieces = [piece_dict_en[str(board.piece_at(s)).lower()] for s in defended_pieces]
 
             if 'Rei' in defended_pieces:
                 ki = defended_pieces.index('Rei')
@@ -1670,12 +1678,12 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
 
             possible_forked_squares = move_creates_fork(board, move, return_forked_squares=True)
             if len(possible_forked_squares) >= 2:
-                forked_pieces = [piece_dict[str(board.piece_at(s)).lower()] for s in possible_forked_squares]
+                forked_pieces = [piece_dict_en[str(board.piece_at(s)).lower()] for s in possible_forked_squares]
                 review += f'This creates a fork on {format_item_list(forked_pieces)}. '
             else:
                 possible_attakced_piece = move_attacks_piece(board, move, return_attacked_piece=True)
                 if possible_attakced_piece is not False:
-                    review += f'This attacks a {piece_dict[str(possible_attakced_piece).lower()]}. '
+                    review += f'This attacks a {piece_dict_en[str(possible_attakced_piece).lower()]}. '
 
 
             if move_blocks_check(board, move):
@@ -1683,7 +1691,7 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
 
             developing = is_developing_move(board, move)
             if developing is not False:
-                review += f'This develops a {piece_dict[developing.lower()]}. '
+                review += f'This develops a {piece_dict_en[developing.lower()]}. '
             
             if is_fianchetto(board, move):
                 review += 'This fianchettos the bishop by placing it on a powerful diagonal. '
@@ -1708,18 +1716,18 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
 
                 if 'higher value piece' not in previous_review:
                     if move_captures_free_piece(board, move):
-                        review += f'This captures a free {piece_dict[str(board.piece_at(move.to_square)).lower()]}. '
+                        review += f'This captures a free {piece_dict_en[str(board.piece_at(move.to_square)).lower()]}. '
 
             attacked_squares_with_check = move_is_discovered_check_and_attacks(board, move, return_attacked_squares=True)
             if len(attacked_squares_with_check) > 0:
                 attacked_pieces_with_check = [board.piece_at(s) for s in attacked_squares_with_check]
-                attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
+                attacked_pieces_with_check = [piece_dict_en[str(p).lower()] for p in attacked_pieces_with_check]
                 review += f'This creates a discovered check while attacking a {format_item_list(attacked_pieces_with_check)}. '
 
             trapped_squares = move_traps_opponents_piece(board, move, return_trapped_squares=True)
             if len(trapped_squares) > 0:
                 trapped_pieces = [board.piece_at(s) for s in trapped_squares]
-                trapped_pieces = [piece_dict[str(p).lower()] for p in trapped_pieces]
+                trapped_pieces = [piece_dict_en[str(p).lower()] for p in trapped_pieces]
                 review += f'This traps a {format_item_list(trapped_pieces)}. '
 
             if is_possible_sacrifice(board, move):
@@ -1728,7 +1736,7 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
                 review = review.replace('best', 'brilliant')
                 review = review.replace('good', 'brilliant')
                 review = review.replace('excellent', 'brilliant')
-                review += f'This sacrifices the {piece_dict[str(board.piece_at(move.from_square)).lower()]}. '
+                review += f'This sacrifices the {piece_dict_en[str(board.piece_at(move.from_square)).lower()]}. '
 
             if move_threatens_mate(board, move, engine=engine):
                 review += 'This creates a checkmate threat. '
@@ -1748,14 +1756,14 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
                 possible_hanging_squares = [s for s in possible_hanging_squares if position_after_move.piece_at(s).color == board.turn]
                 if len(possible_hanging_squares) > 0:
                     hanging_squares = [chess.square_name(s) for s in possible_hanging_squares]
-                    hanging_pieces = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in possible_hanging_squares]
+                    hanging_pieces = [piece_dict_en[str(position_after_move.piece_at(s)).lower()] for s in possible_hanging_squares]
                     review += f'This move leaves {format_item_list(hanging_pieces)} hanging on {format_item_list(hanging_squares)}. '
 
             capturable_pieces_by_lower = check_for_capturable_pieces_by_lower(position_after_move)
             capturable_pieces_by_lower = [s for s in capturable_pieces_by_lower if s not in possible_hanging_squares]
 
             if (len(capturable_pieces_by_lower) > 0) and (not position_after_move.is_check())  and (not is_possible_trade(board, move)):
-                capturable_pieces_by_lower = [piece_dict[str(position_after_move.piece_at(s)).lower()] for s in capturable_pieces_by_lower]
+                capturable_pieces_by_lower = [piece_dict_en[str(position_after_move.piece_at(s)).lower()] for s in capturable_pieces_by_lower]
                 review += f'A {format_item_list(capturable_pieces_by_lower)} can be captured by a lower value piece. '
 
             possible_forking_moves = move_allows_fork(board, move, return_forking_moves=True)
@@ -1774,7 +1782,7 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
             missed_free_captures = move_misses_free_piece(board, move, return_free_captures=True)
             if len(missed_free_captures) > 0:
                 if (best_move in missed_free_captures) and (move != best_move):
-                    review += f"A chance to capture a {piece_dict[str(board.piece_at(best_move.to_square)).lower()]} was missed. "
+                    review += f"A chance to capture a {piece_dict_en[str(board.piece_at(best_move.to_square)).lower()]} was missed. "
             
             # CHANGE KEY 2: Uses the persistent version for the opponent's move
             lets_opponent_play_move = get_best_move_persistent(position_after_move, engine) # <<< CHANGE HERE!
@@ -1784,7 +1792,7 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
 
             missed_attacked_piece = move_attacks_piece(board, best_move, return_attacked_piece=True)
             if missed_attacked_piece is not False:
-                review += f'A chance to attack a {piece_dict[str(missed_attacked_piece).lower()]} with {board.san(best_move)} was missed. '
+                review += f'A chance to attack a {piece_dict_en[str(missed_attacked_piece).lower()]} with {board.san(best_move)} was missed. '
 
             if move_attacks_piece(position_after_move, lets_opponent_play_move):
                 review += f'This allows the opponent to attack a piece. '
@@ -1792,26 +1800,26 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
             attacked_squares_with_check = move_is_discovered_check_and_attacks(position_after_move, lets_opponent_play_move, return_attacked_squares=True)
             if len(attacked_squares_with_check) > 0:
                 attacked_pieces_with_check = [position_after_move.piece_at(s) for s in attacked_squares_with_check]
-                attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in attacked_pieces_with_check]
+                attacked_pieces_with_check = [piece_dict_en[str(p).lower()] for p in attacked_pieces_with_check]
                 review += f'This lets the opponent win a {format_item_list(attacked_pieces_with_check)} with a discovered check. '
 
             missed_attacked_squares_with_check = move_is_discovered_check_and_attacks(board, best_move, return_attacked_squares=True)
             if len(missed_attacked_squares_with_check) > 0:
                 missed_attacked_pieces_with_check = [board.piece_at(s) for s in missed_attacked_squares_with_check]
-                missed_attacked_pieces_with_check = [piece_dict[str(p).lower()] for p in missed_attacked_pieces_with_check]
+                missed_attacked_pieces_with_check = [piece_dict_en[str(p).lower()] for p in missed_attacked_pieces_with_check]
                 review += f'This misses the chance to attack a {format_item_list(missed_attacked_pieces_with_check)} with a discovered check. '
 
             if not (len(attacked_squares_with_check) > 0):
                 trapped_squares = move_traps_opponents_piece(position_after_move, lets_opponent_play_move, return_trapped_squares=True)
                 if len(trapped_squares) > 0:
                     trapped_pieces = [position_after_move.piece_at(s) for s in trapped_squares]
-                    trapped_pieces = [piece_dict[str(p).lower()] for p in trapped_pieces]
+                    trapped_pieces = [piece_dict_en[str(p).lower()] for p in trapped_pieces]
                     review += f'This allows a {format_item_list(trapped_pieces)} to be trapped. '
 
             missed_trapped_squares = move_traps_opponents_piece(board, best_move, return_trapped_squares=True)
             if len(missed_trapped_squares) > 0:
                 missed_trapped_pieces = [board.piece_at(s) for s in missed_trapped_squares]
-                missed_trapped_pieces = [piece_dict[str(p).lower()] for p in missed_trapped_pieces]
+                missed_trapped_pieces = [piece_dict_en[str(p).lower()] for p in missed_trapped_pieces]
                 review += f'This misses the chance to trap a {format_item_list(missed_trapped_pieces)}. '
 
             if move_wins_tempo(position_after_move, lets_opponent_play_move, engine=engine):
@@ -1855,7 +1863,7 @@ def review_move(board: chess.Board, move, previous_review: str, check_if_opening
                 n_current_mate = move_classication.split()[-1].replace('.', '')
                 
                 # Add the Brilliant description (Legal's Mate)
-                review += f'This is a BRILLIANT MOVE! You sacrifice the {piece_dict[str(board.piece_at(move.from_square)).lower()]}, guaranteeing checkmate in {n_current_mate} moves. '
+                review += f'This is a BRILLIANT MOVE! You sacrifice the {piece_dict_en[str(board.piece_at(move.from_square)).lower()]}, guaranteeing checkmate in {n_current_mate} moves. '
                 
                 # Return the result immediately, if it is brilliant
                 return move_classication, review, best_move, board.san(best_move)
